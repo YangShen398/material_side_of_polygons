@@ -5,6 +5,11 @@ void GLWidget::clear() {
   point_data_.clear();
   segment_data_.clear();
   vd_.clear();
+
+  polygon_data_.clear();
+  disjoint_idx_.clear();
+  combined_polygon_set_.clear();
+  ordered_pairs_.clear();
 }
 
 void GLWidget::read_data(const QString& file_path) {
@@ -25,10 +30,22 @@ void GLWidget::read_data(const QString& file_path) {
     point_data_.push_back(p);
   }
   in_stream >> num_segments;
+  point_type first;
+  bool isFirst = true;
   for (std::size_t i = 0; i < num_segments; ++i) {
     in_stream >> x1 >> y1 >> x2 >> y2;
     point_type lp(x1, y1);
     point_type hp(x2, y2);
+    if (isFirst)
+    {
+        first = lp;
+        isFirst = false;
+    }
+    if (first == hp)
+    {
+        disjoint_idx_.emplace_back(i);
+        isFirst = true;
+    }
     update_brect(lp);
     update_brect(hp);
     segment_data_.push_back(segment_type(lp, hp));
@@ -119,52 +136,85 @@ void GLWidget::draw_segments() {
 }
 
 void GLWidget::draw_vertices() {
-  // Draw voronoi vertices.
+
+
   glColor3f(0.0f, 0.0f, 0.0f);
   glPointSize(6);
   glBegin(GL_POINTS);
-  for (const_vertex_iterator it = vd_.vertices().begin();
-       it != vd_.vertices().end(); ++it) {
-    if (internal_edges_only_ && (it->color() == EXTERNAL_COLOR)) {
-      continue;
-    }
-    point_type vertex(it->x(), it->y());
-    vertex = deconvolve(vertex, shift_);
-    glVertex2f(vertex.x(), vertex.y());
+  coordinate_type width = xh(brect_) - xl(brect_);
+  double xxhh = xh(brect_);
+  double xxll = xl(brect_);
+  int xN = 100;
+  coordinate_type height = yh(brect_) - yl(brect_);
+  double yyhh = yh(brect_);
+  double yyll = yl(brect_);
+  int yN = 100;
+  for (int i = 0; i < xN; ++i)
+  {
+      for (int j = 0; j < yN; ++j)
+      {
+          double x = xl(brect_) + (width / xN) * i;
+          double y = yl(brect_) + (height / yN) * j;
+          point_type vertex(x, y);
+          for (const auto& polygon : combined_polygon_set_)
+          {
+              if (contains(polygon, vertex))
+              {
+                  vertex = deconvolve(vertex, shift_);
+                  glVertex2f(vertex.x(), vertex.y());
+              }
+          }
+      }
   }
   glEnd();
+
+  // Draw voronoi vertices.
+//  glColor3f(0.0f, 0.0f, 0.0f);
+//  glPointSize(6);
+//  glBegin(GL_POINTS);
+//  for (const_vertex_iterator it = vd_.vertices().begin();
+//       it != vd_.vertices().end(); ++it) {
+//    if (internal_edges_only_ && (it->color() == EXTERNAL_COLOR)) {
+//      continue;
+//    }
+//    point_type vertex(it->x(), it->y());
+//    vertex = deconvolve(vertex, shift_);
+//    glVertex2f(vertex.x(), vertex.y());
+//  }
+//  glEnd();
 }
 void GLWidget::draw_edges() {
   // Draw voronoi edges.
-  glColor3f(0.0f, 0.0f, 0.0f);
-  glLineWidth(1.7f);
-  for (const_edge_iterator it = vd_.edges().begin();
-       it != vd_.edges().end(); ++it) {
-    if (primary_edges_only_ && !it->is_primary()) {
-      continue;
-    }
-    if (internal_edges_only_ && (it->color() == EXTERNAL_COLOR)) {
-      continue;
-    }
-    std::vector<point_type> samples;
-    if (!it->is_finite()) {
-      clip_infinite_edge(*it, &samples);
-    } else {
-      point_type vertex0(it->vertex0()->x(), it->vertex0()->y());
-      samples.push_back(vertex0);
-      point_type vertex1(it->vertex1()->x(), it->vertex1()->y());
-      samples.push_back(vertex1);
-      if (it->is_curved()) {
-        sample_curved_edge(*it, &samples);
-      }
-    }
-    glBegin(GL_LINE_STRIP);
-    for (std::size_t i = 0; i < samples.size(); ++i) {
-      point_type vertex = deconvolve(samples[i], shift_);
-      glVertex2f(vertex.x(), vertex.y());
-    }
-    glEnd();
-  }
+//  glColor3f(0.0f, 0.0f, 0.0f);
+//  glLineWidth(1.7f);
+//  for (const_edge_iterator it = vd_.edges().begin();
+//       it != vd_.edges().end(); ++it) {
+//    if (primary_edges_only_ && !it->is_primary()) {
+//      continue;
+//    }
+//    if (internal_edges_only_ && (it->color() == EXTERNAL_COLOR)) {
+//      continue;
+//    }
+
+//    std::vector<point_type> samples;
+//    if (!it->is_finite()) {
+//      clip_infinite_edge(*it, &samples);
+//    } else {
+//      point_type vertex0(it->vertex0()->x(), it->vertex0()->y());
+//      samples.push_back(vertex0);
+//      point_type vertex1(it->vertex1()->x(), it->vertex1()->y());
+//      samples.push_back(vertex1);
+//      if (it->is_curved()) {
+//        sample_curved_edge(*it, &samples);
+//      }
+//    }
+//    glBegin(GL_LINE_STRIP);
+//    for (std::size_t i = 0; i < samples.size(); ++i) {
+//      point_type vertex = deconvolve(samples[i], shift_);
+//      glVertex2f(vertex.x(), vertex.y());
+//    }
+//    glEnd();
+//  }
 }
 
 void GLWidget::clip_infinite_edge(
@@ -310,6 +360,91 @@ void GLWidget::build(const QString& file_path) {
     }
   }
 
+  // build disjoint polygon sets
+  int pre = 0;
+  for (const auto& i : disjoint_idx_)
+  {
+      std::vector<point_type> pts;
+      poly_type polygon;
+      for (int j = pre; j <= i; ++j)
+      {
+          pts.push_back(segment_data_.at(j).low());
+      }
+      pre = i + 1;
+      set_points(polygon, pts.begin(), pts.end());
+      polygon_data_.push_back(polygon);
+  }
+
+
+  // build the matrix to depict the relationship between each disjoint polygon
+  int rows = polygon_data_.size();
+  int columns = polygon_data_.size();
+  int* joint_matrix = new int[rows * columns];
+  for (int i = 0; i < rows; i++)
+  {
+      int* row = &joint_matrix[i * columns];
+
+      for (int j = 0; j < columns; j++)
+      {
+          int* e_ij = &row[j];
+          int* col = &joint_matrix[j * rows];
+          int* e_ji = &col[i];
+          if (i == j)
+          {
+              (*e_ij) = 0;
+              continue;
+          }
+          // is j-th polygon inside current i-th polygon?
+          // if yes, e_ij = 1, e_ji = -1, otherwise, 0
+          // we only need to see if one point from polygon(j) is inside polygon(i) or not
+          // this is because we are assuming they are disjoint polygons which do not intersect
+          if ((*e_ij) == -1)
+          {
+              continue;
+          }
+          bool inside = contains(polygon_data_.at(i), polygon_data_.at(j).coords_.at(0));
+          (*e_ij) = inside ? 1 : 0;
+          (*e_ji) = inside ? -1 : 0;
+      }
+  }
+
+  // alwasy reserve memory if size is known. This can avoid deallocate and allocate memory inside std::vector to improve performance
+  ordered_pairs_.resize(rows);
+  // now we fill in ordered_pairs
+  int polygon_idx = 0;
+  for (auto& pair : ordered_pairs_)
+  {
+      pair.first = polygon_idx++; // first = index of polygon_data_
+      int* row = &joint_matrix[pair.first * columns];
+      int num = 0;
+      int sign = 1;
+      for (int j = 0; j < columns; j++)
+      {
+          int* e_ij = &row[j];
+          num += ((*e_ij) == -1) ? 0 : (*e_ij);
+          sign *= ((*e_ij) == 0) ? 1 : (*e_ij);
+      }
+      pair.second.first = sign; // indicates whether the polygon is inner contour or outer contour, 1=out, -1=in
+      pair.second.second = num; // number of polygons encapsulated
+  }
+  // up to this point ordered_pairs should be initialized with correct values, but not sorted
+  // now we need to sort it based on the number of polygons encapsulated
+  std::sort(ordered_pairs_.begin(), ordered_pairs_.end(),
+      [](std::pair<int, std::pair<int ,int>>& a, std::pair<int, std::pair<int ,int>>& b) { return a.second.second > b.second.second;});
+  // perform boolean operations to generate the final combined polygon set
+  for (const auto& pair : ordered_pairs_)
+  {
+      if (pair.second.first == 1)
+      {
+          combined_polygon_set_ += polygon_data_.at(pair.first);
+      }
+      else
+      {
+          combined_polygon_set_ -= polygon_data_.at(pair.first);
+      }
+  }
+
+  delete [] joint_matrix;
   // Update view port.
   update_view_port();
 }

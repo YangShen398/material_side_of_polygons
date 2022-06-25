@@ -16,6 +16,7 @@
 #include <boost/polygon/polygon.hpp>
 #include <boost/polygon/voronoi.hpp>
 using namespace boost::polygon;
+using namespace boost::polygon::operators;
 #include "voronoi_visual_utils.hpp"
 
 #pragma comment(lib, "opengl32.lib")
@@ -24,6 +25,7 @@ typedef double coordinate_type;
 typedef point_data<coordinate_type> point_type;
 typedef segment_data<coordinate_type> segment_type;
 typedef rectangle_data<coordinate_type> rect_type;
+typedef polygon_data<coordinate_type> poly_type;
 typedef voronoi_builder<int> VB;
 typedef voronoi_diagram<coordinate_type> VD;
 typedef VD::cell_type cell_type;
@@ -97,12 +99,23 @@ class GLWidget : public QGLWidget {
   point_type shift_;
   std::vector<point_type> point_data_;
   std::vector<segment_type> segment_data_;
+  std::vector<poly_type> polygon_data_;
   rect_type brect_;
   VB vb_;
   VD vd_;
   bool brect_initialized_;
   bool primary_edges_only_;
   bool internal_edges_only_;
+
+  std::vector<int> disjoint_idx_;
+  // this variable stores the final combined polygon sets after boolean operations.
+  // each disjoint region is one element. so final size is number of disjoint region.
+  std::vector<poly_type> combined_polygon_set_;
+
+  // first = index of the polyon in polygon_data_
+  // second.first = -1 or 1 with 1 meaning out and -1 meaning in
+  // second.second = number of polygons encapsulated
+  std::vector<std::pair<int, std::pair<int, int>>> ordered_pairs_;
 };
 
 #endif // GLWIDGET_H
