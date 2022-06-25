@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.5)
 
 project(voronoi_visualizer VERSION 0.1 LANGUAGES CXX)
 
+# find_package(Boost REQUIRED COMPONENTS polygon)
+
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
 set(CMAKE_AUTOUIC ON)
@@ -21,9 +23,9 @@ set(PROJECT_SOURCES
         main.cpp
         mainwindow.cpp
         mainwindow.h
-				voronoi_visual_utils.hpp
-				GLWidget.h
-				GLWidget.cpp
+        voronoi_visual_utils.hpp
+        GLWidget.h
+        GLWidget.cpp
 )
 
 add_executable(voronoi_visualizer ${PROJECT_SOURCES})
