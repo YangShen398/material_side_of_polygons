@@ -15,4 +15,5 @@ cmake ..
 ```
 
 ## Usage
-Lanuch voronoi_visualizer executable and select input directory. 
+Lanuch voronoi_visualizer executable and select input directory. Double click on the txt file to display the polygons with inside filled.
+![Alt Text](./tutorial.gif)
